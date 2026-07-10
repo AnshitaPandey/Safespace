@@ -1,4 +1,4 @@
-# SafeSpace — Full Project
+# SafeSpace 
 
 An AI emotional-support companion platform: chat with memory (RAG), mood tracking with
 forecasting, an AI journal, analytics, goals/streaks, voice, and a safety layer that gates
