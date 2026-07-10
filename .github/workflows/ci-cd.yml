@@ -1,0 +1,122 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-lint-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: safespace
+          POSTGRES_PASSWORD: safespace
+          POSTGRES_DB: safespace
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U safespace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          pip install ruff pytest pytest-asyncio
+
+      - name: Lint
+        working-directory: backend
+        run: ruff check app
+
+      - name: Run Alembic migrations against the test DB
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://safespace:safespace@localhost:5432/safespace
+        run: alembic upgrade head
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://safespace:safespace@localhost:5432/safespace
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test-secret-key-for-ci-only
+        run: pytest -v
+
+  frontend-lint-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Type-check
+        working-directory: frontend
+        run: npx tsc -b
+
+      - name: Build
+        working-directory: frontend
+        run: npx vite build
+
+  build-and-push-images:
+    needs: [backend-lint-test, frontend-lint-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ghcr.io/${{ github.repository }}/backend:latest
+
+      - name: Build and push ml-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/ml-service
+          push: true
+          tags: ghcr.io/${{ github.repository }}/ml-service:latest
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ghcr.io/${{ github.repository }}/frontend:latest
+
+      # Deploy step is intentionally left as a placeholder — wire this to your actual target
+      # (ECS `aws ecs update-service`, Cloud Run `gcloud run deploy`, etc). What "deploy" means
+      # depends on infra choices made outside this repo (VPC, secrets manager, load balancer).
+      - name: Deploy (placeholder)
+        run: echo "Add your ECS/Cloud Run/K8s deploy step here."

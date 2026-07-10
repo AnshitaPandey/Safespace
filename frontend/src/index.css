@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-dusk-900 text-ink-100 font-body antialiased;
+}
+
+::selection {
+  @apply bg-lamp-500/30 text-ink-100;
+}
+
+/* Visible keyboard focus everywhere — accessibility floor, not decoration */
+:focus-visible {
+  outline: 2px solid theme('colors.lamp.500');
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
